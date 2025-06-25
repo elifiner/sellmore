@@ -47,8 +47,8 @@ struct ContentView: View {
     }
     
     private var timerColor: Color {
-        if timeLeft <= 5 * 60 { return .yellow } // 5 minutes
         if timeLeft <= 1 * 60 { return .red }    // 1 minute
+        if timeLeft <= 5 * 60 { return .yellow } // 5 minutes
         return .primary
     }
     

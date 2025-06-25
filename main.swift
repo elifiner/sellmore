@@ -35,8 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 // Main Content View
 struct ContentView: View {
-    @State private var timeLeft = 6 * 60 // 30 minutes in seconds
-    // @State private var timeLeft = 15
+    @State private var timeLeft = 30 * 60 // 30 minutes in seconds
     @State private var timer: Timer?
     @State private var isRunning = false
     @State private var hasPermissions = false

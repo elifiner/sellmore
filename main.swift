@@ -19,26 +19,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func checkAutomationPermissions() {
+        // Just trigger the permission request, no alert needed
         let script = "tell application \"System Events\" to return name of first process"
         var error: NSDictionary?
         
         if let scriptObject = NSAppleScript(source: script) {
             _ = scriptObject.executeAndReturnError(&error)
-            if error != nil {
-                DispatchQueue.main.async {
-                    self.showPermissionAlert()
-                }
-            }
         }
-    }
-    
-    func showPermissionAlert() {
-        let alert = NSAlert()
-        alert.messageText = "Permissions Needed"
-        alert.informativeText = "SellMore needs accessibility permissions to close Zoom windows when the timer expires. Please allow access in the previous dialog, or go to System Preferences > Security & Privacy > Privacy > Automation to grant permissions manually."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -48,7 +35,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 // Main Content View
 struct ContentView: View {
-    @State private var timeLeft = 30 * 60 // 30 minutes in seconds
+    // @State private var timeLeft = 30 * 60 // 30 minutes in seconds
+    @State private var timeLeft = 15
     @State private var timer: Timer?
     @State private var isRunning = false
     @State private var hasPermissions = false
@@ -70,46 +58,57 @@ struct ContentView: View {
             Text(timeString)
                 .font(.system(size: 32, weight: .bold, design: .monospaced))
                 .foregroundColor(timerColor)
+                .fixedSize()
             
             HStack(spacing: 8) {
                 Button(isRunning ? "Stop" : "Start") {
                     toggleTimer()
                 }
                 .buttonStyle(.borderedProminent)
+                .fixedSize()
                 
                 Button("Reset") {
                     resetTimer()
                 }
                 .buttonStyle(.bordered)
+                .fixedSize()
                 
                 Button("+5m") {
                     addFiveMinutes()
                 }
                 .buttonStyle(.bordered)
+                .fixedSize()
             }
             
             if !hasPermissions {
-                HStack {
+                HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
-                    Text("No automation access")
+                        .font(.caption)
+                    Text("Missing permissions")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Button("Fix") {
                         openSystemPreferences()
                     }
                     .font(.caption)
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
                 }
-                .padding(.top, 4)
+                .padding(.top, 6)
             }
         }
         .padding(16)
+        .fixedSize()
         .background(Color(NSColor.windowBackgroundColor))
         .cornerRadius(8)
         .onDisappear {
             timer?.invalidate()
         }
         .onAppear {
+            checkPermissions()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             checkPermissions()
         }
     }
@@ -121,6 +120,10 @@ struct ContentView: View {
             timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
                 if timeLeft > 0 {
                     timeLeft -= 1
+                    // Check permissions every 10 seconds while running
+                    if timeLeft % 10 == 0 {
+                        checkPermissions()
+                    }
                 } else {
                     timer?.invalidate()
                     isRunning = false
@@ -193,5 +196,6 @@ struct SellMoreApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+        .defaultSize(width: 200, height: 120)
     }
 } 

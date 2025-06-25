@@ -78,6 +78,12 @@ struct ContentView: View {
                 }
                 .buttonStyle(.bordered)
                 .fixedSize()
+                
+                Button("Test") {
+                    killZoomWindow()
+                }
+                .buttonStyle(.bordered)
+                .fixedSize()
             }
             
             if !hasPermissions {
@@ -106,6 +112,7 @@ struct ContentView: View {
             timer?.invalidate()
         }
         .onAppear {
+            NSLog("DEBUG: SellMore app started")
             checkPermissions()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -159,28 +166,82 @@ struct ContentView: View {
     }
     
     private func killZoomWindow() {
+        NSLog("DEBUG: killZoomWindow called")
+        
         guard hasPermissions else {
+            NSLog("DEBUG: No permissions for Zoom closing")
             checkPermissions()
             return
         }
         
-        let script = """
+        NSLog("DEBUG: Timer expired, attempting to close Zoom...")
+        
+        // First, let's see what Zoom processes exist
+        let debugScript = """
         tell application "System Events"
-            set zoomApps to (every process whose name contains "zoom")
-            repeat with zoomApp in zoomApps
-                try
-                    set zoomWindows to (every window of zoomApp whose name contains "Zoom Meeting")
-                    repeat with zoomWindow in zoomWindows
-                        click (first button of zoomWindow whose description is "close button")
-                    end repeat
-                end try
+            set allProcesses to name of every process
+            set zoomProcesses to ""
+            repeat with processName in allProcesses
+                if processName contains "zoom" or processName contains "Zoom" then
+                    if zoomProcesses is "" then
+                        set zoomProcesses to processName
+                    else
+                        set zoomProcesses to zoomProcesses & ", " & processName
+                    end if
+                end if
             end repeat
+            return zoomProcesses
         end tell
         """
         
         var error: NSDictionary?
+        if let debugScriptObject = NSAppleScript(source: debugScript) {
+            let result = debugScriptObject.executeAndReturnError(&error)
+            NSLog("DEBUG: Found Zoom processes: \(result.stringValue ?? "none")")
+            if let err = error {
+                NSLog("DEBUG: Error finding processes: \(err)")
+            }
+        }
+        
+        // Force quit Zoom processes - no mercy, no dialogs
+        let script = """
+        tell application "System Events"
+            set killedProcesses to ""
+            set processCount to 0
+            
+            repeat with proc in (every process)
+                set procName to name of proc
+                if procName contains "zoom" or procName contains "Zoom" or procName is "zoom.us" then
+                    try
+                        set processCount to processCount + 1
+                        if killedProcesses is "" then
+                            set killedProcesses to procName
+                        else
+                            set killedProcesses to killedProcesses & ", " & procName
+                        end if
+                        
+                        -- Force kill the process immediately
+                        do shell script "kill -9 " & (unix id of proc)
+                    on error killError
+                        -- If kill -9 fails, try force quitting through System Events
+                        try
+                            set frontmost of proc to true
+                            delay 0.1
+                            key code 12 using {command down}
+                        end try
+                    end try
+                end if
+            end repeat
+            return "Killed " & processCount & " processes: " & killedProcesses
+        end tell
+        """
+        
         if let scriptObject = NSAppleScript(source: script) {
-            scriptObject.executeAndReturnError(&error)
+            let result = scriptObject.executeAndReturnError(&error)
+            NSLog("DEBUG: Script result: \(result.stringValue ?? "no result")")
+            if let err = error {
+                NSLog("DEBUG: Script error: \(err)")
+            }
         }
     }
 }

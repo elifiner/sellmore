@@ -39,6 +39,12 @@ struct ContentView: View {
     @State private var timer: Timer?
     @State private var isRunning = false
     @State private var hasPermissions = false
+    @State private var showTenMinuteWarning = false
+    @State private var hasShownTenMinuteWarning = false
+    @State private var warningOpacity: Double = 1.0
+    @State private var blinkCount = 0
+    @State private var editableMinutes = "30"
+    @State private var editableSeconds = "00"
     
     private var timeString: String {
         let minutes = timeLeft / 60
@@ -54,10 +60,59 @@ struct ContentView: View {
     
     var body: some View {
         VStack(spacing: 12) {
-            Text(timeString)
-                .font(.system(size: 32, weight: .bold, design: .monospaced))
-                .foregroundColor(timerColor)
+            if isRunning {
+                Text(timeString)
+                    .font(.system(size: 32, weight: .bold, design: .monospaced))
+                    .foregroundColor(timerColor)
+                    .fixedSize()
+            } else {
+                HStack(spacing: 0) {
+                    TextField("", text: $editableMinutes)
+                        .font(.system(size: 32, weight: .bold, design: .monospaced))
+                        .foregroundColor(timerColor)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 60)
+                        .textFieldStyle(.plain)
+                        .onSubmit { updateTimeFromInput() }
+                        .onChange(of: editableMinutes) { _ in 
+                            validateAndFormatMinutes()
+                        }
+                    
+                    Text(":")
+                        .font(.system(size: 32, weight: .bold, design: .monospaced))
+                        .foregroundColor(timerColor)
+                    
+                    TextField("", text: $editableSeconds)
+                        .font(.system(size: 32, weight: .bold, design: .monospaced))
+                        .foregroundColor(timerColor)
+                        .multilineTextAlignment(.leading)
+                        .frame(width: 60)
+                        .textFieldStyle(.plain)
+                        .onSubmit { updateTimeFromInput() }
+                        .onChange(of: editableSeconds) { _ in 
+                            validateAndFormatSeconds()
+                        }
+                }
                 .fixedSize()
+            }
+            
+            if showTenMinuteWarning {
+                HStack(spacing: 8) {
+                    Text("10 minutes left")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .opacity(warningOpacity)
+                    
+                    Button("✔︎") {
+                        showTenMinuteWarning = false
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                }
+                .padding(.vertical, 4)
+                .transition(.opacity)
+            }
             
             HStack(spacing: 8) {
                 Button(isRunning ? "Stop" : "Start") {
@@ -112,6 +167,7 @@ struct ContentView: View {
         }
         .onAppear {
             checkPermissions()
+            updateEditableFields()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             checkPermissions()
@@ -125,6 +181,14 @@ struct ContentView: View {
             timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
                 if timeLeft > 0 {
                     timeLeft -= 1
+                    
+                    // Check for 10 minute warning
+                    if timeLeft == 10 * 60 && !hasShownTenMinuteWarning {
+                        showTenMinuteWarning = true
+                        hasShownTenMinuteWarning = true
+                        startBlinking()
+                    }
+                    
                     // Check permissions every 10 seconds while running
                     if timeLeft % 10 == 0 {
                         checkPermissions()
@@ -143,10 +207,16 @@ struct ContentView: View {
         timer?.invalidate()
         isRunning = false
         timeLeft = 30 * 60
+        showTenMinuteWarning = false
+        hasShownTenMinuteWarning = false
+        warningOpacity = 1.0
+        blinkCount = 0
+        updateEditableFields()
     }
     
     private func addFiveMinutes() {
         timeLeft += 5 * 60
+        updateEditableFields()
     }
     
     private func checkPermissions() {
@@ -189,6 +259,64 @@ struct ContentView: View {
         if let scriptObject = NSAppleScript(source: script) {
             scriptObject.executeAndReturnError(&error)
         }
+    }
+    
+    private func startBlinking() {
+        blinkCount = 0
+        performBlink()
+    }
+    
+    private func performBlink() {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            warningOpacity = 0.2
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                self.warningOpacity = 1.0
+            }
+            
+            self.blinkCount += 1
+            if self.blinkCount < 3 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.performBlink()
+                }
+            }
+        }
+    }
+    
+    private func updateTimeFromInput() {
+        let minutes = Int(editableMinutes) ?? 0
+        let seconds = Int(editableSeconds) ?? 0
+        timeLeft = minutes * 60 + seconds
+        hasShownTenMinuteWarning = false
+    }
+    
+    private func updateEditableFields() {
+        let minutes = timeLeft / 60
+        let seconds = timeLeft % 60
+        editableMinutes = String(format: "%02d", minutes)
+        editableSeconds = String(format: "%02d", seconds)
+    }
+    
+    private func validateAndFormatMinutes() {
+        let filtered = editableMinutes.filter { $0.isNumber }
+        if let value = Int(filtered), value >= 0 {
+            editableMinutes = String(format: "%02d", min(value, 99))
+        } else {
+            editableMinutes = "00"
+        }
+        updateTimeFromInput()
+    }
+    
+    private func validateAndFormatSeconds() {
+        let filtered = editableSeconds.filter { $0.isNumber }
+        if let value = Int(filtered), value >= 0 {
+            editableSeconds = String(format: "%02d", min(value, 59))
+        } else {
+            editableSeconds = "00"
+        }
+        updateTimeFromInput()
     }
 }
 
